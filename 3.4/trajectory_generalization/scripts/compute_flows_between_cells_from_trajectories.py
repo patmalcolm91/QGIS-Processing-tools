@@ -86,8 +86,8 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
                         m = 0
                     t = datetime(1970,1,1) + timedelta(seconds=m) + timedelta(hours=8) # Beijing GMT+8
                     h = t.hour
-                    self.id_to_centroid[id][1][0] = self.id_to_centroid[id][1][0] + 1
-                    self.id_to_centroid[id][1][int(h/6)+1] = self.id_to_centroid[id][1][int(h/6)+1] + 1
+                    self.id_to_centroid[id][1][0] += weight
+                    self.id_to_centroid[id][1][int(h/6)+1] += weight
                     this_sequence.append(nearest_cell_id)
         
         def create_flow_lines(self):
