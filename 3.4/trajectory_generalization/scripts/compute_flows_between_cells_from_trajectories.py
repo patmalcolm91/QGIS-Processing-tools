@@ -1,6 +1,9 @@
 from qgis.PyQt.QtCore import QCoreApplication, QVariant
-from qgis.core import (QgsField, QgsFields, QgsFeature, QgsGeometry, QgsFeatureSink, QgsFeatureRequest, QgsProcessing, QgsProcessingAlgorithm, QgsProcessingParameterFeatureSource, QgsProcessingOutputNumber, QgsProcessingParameterField, QgsProcessingParameterBoolean, QgsProcessingException)
-                       
+from qgis.core import (QgsSpatialIndex, QgsWkbTypes, QgsField, QgsFields, QgsFeature, QgsGeometry, QgsPoint, QgsFeatureSink, QgsProcessingParameterFeatureSink, QgsFeatureRequest, QgsProcessing, QgsProcessingAlgorithm, QgsProcessingParameterFeatureSource, QgsProcessingOutputNumber, QgsProcessingParameterField, QgsProcessingParameterBoolean, QgsProcessingException)
+from datetime import datetime, timedelta
+import math
+
+               
 class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
     INPUT_TRAJECTORIES = 'Input Trajectories'
     WEIGHT_FIELD = 'Weight Field'
@@ -40,7 +43,7 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
 
 
     class SequenceGenerator():
-        def __init__(self,centroid_layer,trajectory_layer,weight_field=None):
+        def __init__(self,centroid_layer,trajectory_layer,feedback,weight_field=None):
             centroids = [f for f in centroid_layer.getFeatures()]
             self.cell_index = QgsSpatialIndex()
             for f in centroids:
@@ -48,7 +51,7 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
             self.id_to_centroid = {f.id(): [f,[0,0,0,0,0]] for (f) in centroids}
             self.weight_field = weight_field
             if weight_field is not None:
-                self.weightIdx = trajectory_layer.fieldNameIndex(weight_field)
+                self.weightIdx = trajectory_layer.fields().indexFromName(weight_field)
             else:
                 self.weightIdx = None
             self.sequences = {}
@@ -56,7 +59,7 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
             nTraj = float(trajectory_layer.featureCount())
             for i,traj in enumerate(trajectory_layer.getFeatures()):
                 self.evaluate_trajectory(traj)
-                progress.setPercentage(i/nTraj*100)
+                feedback.setProgress(i/nTraj*100)
                 
         def evaluate_trajectory(self,trajectory):
             points = trajectory.geometry().asPolyline()
@@ -72,24 +75,28 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
                         weight = trajectory.attributes()[self.weightIdx]
                     else:
                         weight = 1
-                    if self.sequences.has_key((prev_cell_id,nearest_cell_id)):
+                    if (prev_cell_id,nearest_cell_id) in self.sequences:
                         self.sequences[(prev_cell_id,nearest_cell_id)] += weight
                     else:
                         self.sequences[(prev_cell_id,nearest_cell_id)] = weight
                 if nearest_cell_id != prev_cell_id: 
                     # we have changed to a new cell --> up the counter 
-                    m = trajectory.geometry().geometry().pointN(i).m()
+                    m = trajectory.geometry().vertexAt(i).m()
+                    if math.isnan(m):
+                        m = 0
                     t = datetime(1970,1,1) + timedelta(seconds=m) + timedelta(hours=8) # Beijing GMT+8
-                    h = t.hour 
+                    h = t.hour
                     self.id_to_centroid[id][1][0] = self.id_to_centroid[id][1][0] + 1
-                    self.id_to_centroid[id][1][h/6+1] = self.id_to_centroid[id][1][h/6+1] + 1
+                    self.id_to_centroid[id][1][int(h/6)+1] = self.id_to_centroid[id][1][int(h/6)+1] + 1
                     this_sequence.append(nearest_cell_id)
         
         def create_flow_lines(self):
             lines = []
-            for key,value in self.sequences.iteritems(): 
+            for key,value in self.sequences.items(): 
                 p1 = self.id_to_centroid[key[0]][0].geometry().asPoint()
                 p2 = self.id_to_centroid[key[1]][0].geometry().asPoint()
+                p1 = QgsPoint(p1.x(), p1.y())
+                p2 = QgsPoint(p2.x(), p2.y())
                 feat = QgsFeature()
                 feat.setGeometry(QgsGeometry.fromPolyline([p1,p2]))
                 feat.setAttributes([key[0],key[1],value])
@@ -128,14 +135,13 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
         centroid_layer = self.parameterAsSource(parameters, self.INPUT_CELL_CENTERS, context)
         trajectory_layer = self.parameterAsSource(parameters, self.INPUT_TRAJECTORIES, context)
         weight_field = self.parameterAsString(parameters, self.WEIGHT_FIELD, context)
-        flowIdx = trajectory_layer.fields().indexFromName(weight_field)
         use_weight_field = self.parameterAsBool(parameters, self.USE_WEIGHT_FIELD, context)
         lineFields = QgsFields()
         lineFields.append(QgsField('FROM', QVariant.Int))
         lineFields.append(QgsField('TO', QVariant.Int))
         lineFields.append(QgsField('COUNT', QVariant.Int))
         (lineSink, line_dest_id) = self.parameterAsSink(parameters, self.OUTPUT_FLOWLINES, context,
-                                        lineFields, trajectory_layer.wkbType(), trajectory_layer.sourceCrs())        
+                                        lineFields, QgsWkbTypes.LineString, trajectory_layer.sourceCrs())        
         pointFields = centroid_layer.fields()
         pointFields.append(QgsField('COUNT',QVariant.Int))
         pointFields.append(QgsField('COUNT_Q1',QVariant.Int))
@@ -145,13 +151,13 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
         (pointSink, point_dest_id) = self.parameterAsSink(parameters, self.OUTPUT_CELL_COUNTS, context,
                                         pointFields, centroid_layer.wkbType(), centroid_layer.sourceCrs()) 
         
-        sg = SequenceGenerator(centroid_layer,trajectory_layer, weight_field if use_weight_field else None)
+        sg = self.SequenceGenerator(centroid_layer,trajectory_layer, feedback, weight_field if use_weight_field else None)
         
         geom_type = 2
         for f in sg.create_flow_lines():
             lineSink.addFeature(f, QgsFeatureSink.FastInsert)
         
-        for key, value in sg.id_to_centroid.iteritems():
+        for key, value in sg.id_to_centroid.items():
             (in_feature, n) = value
             out_feature = QgsFeature()
             out_feature.setGeometry(in_feature.geometry())
