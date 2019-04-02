@@ -65,17 +65,18 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
             points = trajectory.geometry().asPolyline()
             this_sequence = []
             weight = 1 if self.weight_field is None else trajectory.attributes()[self.weightIdx]
+            prev_cell_id = None
             for i, pt in enumerate(points):
                 id = self.cell_index.nearestNeighbor(pt,1)[0]
                 nearest_cell = self.id_to_centroid[id][0]
                 nearest_cell_id = nearest_cell.id()
-                prev_cell_id = None
                 if len(this_sequence) >= 1:
                     prev_cell_id = this_sequence[-1]
-                    if (prev_cell_id,nearest_cell_id) in self.sequences:
-                        self.sequences[(prev_cell_id,nearest_cell_id)] += weight
-                    else:
-                        self.sequences[(prev_cell_id,nearest_cell_id)] = weight
+                    if nearest_cell_id != prev_cell_id:
+                        if (prev_cell_id,nearest_cell_id) in self.sequences:
+                            self.sequences[(prev_cell_id,nearest_cell_id)] += weight
+                        else:
+                            self.sequences[(prev_cell_id,nearest_cell_id)] = weight
                 if nearest_cell_id != prev_cell_id: 
                     # we have changed to a new cell --> up the counter 
                     m = trajectory.geometry().vertexAt(i).m()
