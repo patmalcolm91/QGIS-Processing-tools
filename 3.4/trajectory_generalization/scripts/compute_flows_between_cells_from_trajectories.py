@@ -57,27 +57,27 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
                 self.weightIdx = None
             self.sequences = {}
             
-            nTraj = float(trajectory_layer.featureCount())
+            n_traj = float(trajectory_layer.featureCount())
             for i, traj in enumerate(trajectory_layer.getFeatures()):
                 self.evaluate_trajectory(traj)
-                feedback.setProgress(i/nTraj*100)
+                feedback.setProgress(i/n_traj*100)
                 
-        def evaluate_trajectory(self,trajectory):
+        def evaluate_trajectory(self, trajectory):
             points = trajectory.geometry().asPolyline()
             this_sequence = []
             weight = 1 if self.weight_field is None else trajectory.attributes()[self.weightIdx]
             prev_cell_id = None
             for i, pt in enumerate(points):
-                id = self.cell_index.nearestNeighbor(pt,1)[0]
-                nearest_cell = self.id_to_centroid[id][0]
+                nn_id = self.cell_index.nearestNeighbor(pt, 1)[0]
+                nearest_cell = self.id_to_centroid[nn_id][0]
                 nearest_cell_id = nearest_cell.id()
                 if len(this_sequence) >= 1:
                     prev_cell_id = this_sequence[-1]
                     if nearest_cell_id != prev_cell_id:
-                        if (prev_cell_id,nearest_cell_id) in self.sequences:
-                            self.sequences[(prev_cell_id,nearest_cell_id)] += weight
+                        if (prev_cell_id, nearest_cell_id) in self.sequences:
+                            self.sequences[(prev_cell_id, nearest_cell_id)] += weight
                         else:
-                            self.sequences[(prev_cell_id,nearest_cell_id)] = weight
+                            self.sequences[(prev_cell_id, nearest_cell_id)] = weight
                 if nearest_cell_id != prev_cell_id: 
                     # we have changed to a new cell --> up the counter 
                     m = trajectory.geometry().vertexAt(i).m()
@@ -85,8 +85,8 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
                         m = 0
                     t = datetime(1970, 1, 1) + timedelta(seconds=m) + timedelta(hours=8)  # Beijing GMT+8
                     h = t.hour
-                    self.id_to_centroid[id][1][0] += weight
-                    self.id_to_centroid[id][1][int(h/6)+1] += weight
+                    self.id_to_centroid[nn_id][1][0] += weight
+                    self.id_to_centroid[nn_id][1][int(h/6)+1] += weight
                     this_sequence.append(nearest_cell_id)
         
         def create_flow_lines(self):
@@ -135,20 +135,20 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
         trajectory_layer = self.parameterAsSource(parameters, self.INPUT_TRAJECTORIES, context)
         weight_field = self.parameterAsString(parameters, self.WEIGHT_FIELD, context)
         use_weight_field = self.parameterAsBool(parameters, self.USE_WEIGHT_FIELD, context)
-        lineFields = QgsFields()
-        lineFields.append(QgsField('FROM', QVariant.Int))
-        lineFields.append(QgsField('TO', QVariant.Int))
-        lineFields.append(QgsField('COUNT', QVariant.Int))
-        (lineSink, line_dest_id) = self.parameterAsSink(parameters, self.OUTPUT_FLOWLINES, context,
-                                        lineFields, QgsWkbTypes.LineString, trajectory_layer.sourceCrs())
-        pointFields = centroid_layer.fields()
-        pointFields.append(QgsField('COUNT',QVariant.Int))
-        pointFields.append(QgsField('COUNT_Q1',QVariant.Int))
-        pointFields.append(QgsField('COUNT_Q2',QVariant.Int))
-        pointFields.append(QgsField('COUNT_Q3',QVariant.Int))
-        pointFields.append(QgsField('COUNT_Q4',QVariant.Int))
-        (pointSink, point_dest_id) = self.parameterAsSink(parameters, self.OUTPUT_CELL_COUNTS, context,
-                                        pointFields, centroid_layer.wkbType(), centroid_layer.sourceCrs()) 
+        line_fields = QgsFields()
+        line_fields.append(QgsField('FROM', QVariant.Int))
+        line_fields.append(QgsField('TO', QVariant.Int))
+        line_fields.append(QgsField('COUNT', QVariant.Int))
+        (lineSink, line_dest_id) = self.parameterAsSink(parameters, self.OUTPUT_FLOWLINES, context, line_fields,
+                                                        QgsWkbTypes.LineString, trajectory_layer.sourceCrs())
+        point_fields = centroid_layer.fields()
+        point_fields.append(QgsField('COUNT', QVariant.Int))
+        point_fields.append(QgsField('COUNT_Q1', QVariant.Int))
+        point_fields.append(QgsField('COUNT_Q2', QVariant.Int))
+        point_fields.append(QgsField('COUNT_Q3', QVariant.Int))
+        point_fields.append(QgsField('COUNT_Q4', QVariant.Int))
+        (pointSink, point_dest_id) = self.parameterAsSink(parameters, self.OUTPUT_CELL_COUNTS, context, point_fields,
+                                                          centroid_layer.wkbType(), centroid_layer.sourceCrs())
         
         sg = self.SequenceGenerator(centroid_layer, trajectory_layer, feedback,
                                     weight_field if use_weight_field else None)
@@ -171,4 +171,3 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
  
         return {self.OUTPUT_FLOWLINES: line_dest_id,
                 self.OUTPUT_CELL_COUNTS: point_dest_id}
-
