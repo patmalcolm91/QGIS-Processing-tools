@@ -64,10 +64,7 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
         def evaluate_trajectory(self,trajectory):
             points = trajectory.geometry().asPolyline()
             this_sequence = []
-            if self.weight_field is not None:
-                weight = trajectory.attributes()[self.weightIdx]
-            else:
-                weight = 1
+            weight = 1 if self.weight_field is None else trajectory.attributes()[self.weightIdx]
             for i, pt in enumerate(points):
                 id = self.cell_index.nearestNeighbor(pt,1)[0]
                 nearest_cell = self.id_to_centroid[id][0]
