@@ -5,6 +5,7 @@ from qgis.core import (QgsSpatialIndex, QgsWkbTypes, QgsField, QgsFields, QgsFea
                        QgsProcessingParameterNumber)
 from datetime import datetime, timedelta
 import math
+import time
 
                
 class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
@@ -106,6 +107,9 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
             return lines
 
     def initAlgorithm(self, config=None):
+        local_timezone = time.timezone if (time.localtime().tm_isdst == 0) else time.altzone
+        local_timezone /= -3600  # gets the time zone offset of the local machine to use a default
+
         self.addParameter(QgsProcessingParameterFeatureSource(
             self.INPUT_TRAJECTORIES,
             self.tr(self.INPUT_TRAJECTORIES),
@@ -136,7 +140,7 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
             self.TIMEZONE,
             self.tr(self.TIMEZONE),
             QgsProcessingParameterNumber.Integer,
-            QVariant(8),
+            QVariant(local_timezone),
             False,
             -12,
             12
