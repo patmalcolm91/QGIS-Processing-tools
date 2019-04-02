@@ -1,7 +1,8 @@
 from qgis.PyQt.QtCore import QCoreApplication, QVariant
 from qgis.core import (QgsSpatialIndex, QgsWkbTypes, QgsField, QgsFields, QgsFeature, QgsGeometry, QgsPoint,
                        QgsFeatureSink, QgsProcessingParameterFeatureSink, QgsProcessing, QgsProcessingAlgorithm,
-                       QgsProcessingParameterFeatureSource, QgsProcessingParameterField, QgsProcessingParameterBoolean)
+                       QgsProcessingParameterFeatureSource, QgsProcessingParameterField, QgsProcessingParameterBoolean,
+                       QgsProcessingParameterNumber)
 from datetime import datetime, timedelta
 import math
 
@@ -13,6 +14,7 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
     INPUT_CELL_CENTERS = 'Input Cell Centers'
     OUTPUT_FLOWLINES = 'Output Flowlines'
     OUTPUT_CELL_COUNTS = 'Output Cell Counts'
+    TIMEZONE = "Timezone (UTC+...)"
  
     def __init__(self):
         super().__init__()
@@ -44,12 +46,13 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
         return type(self)()
 
     class SequenceGenerator:
-        def __init__(self, centroid_layer, trajectory_layer, feedback, weight_field=None):
+        def __init__(self, centroid_layer, trajectory_layer, feedback, timezone, weight_field=None):
             centroids = [f for f in centroid_layer.getFeatures()]
             self.cell_index = QgsSpatialIndex()
             for f in centroids:
                 self.cell_index.insertFeature(f)
             self.id_to_centroid = {f.id(): [f, [0, 0, 0, 0, 0]] for (f) in centroids}
+            self.timezone = timezone
             self.weight_field = weight_field
             if weight_field is not None:
                 self.weightIdx = trajectory_layer.fields().indexFromName(weight_field)
@@ -83,7 +86,7 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
                     m = trajectory.geometry().vertexAt(i).m()
                     if math.isnan(m):
                         m = 0
-                    t = datetime(1970, 1, 1) + timedelta(seconds=m) + timedelta(hours=8)  # Beijing GMT+8
+                    t = datetime(1970, 1, 1) + timedelta(seconds=m) + timedelta(hours=self.timezone)
                     h = t.hour
                     self.id_to_centroid[nn_id][1][0] += weight
                     self.id_to_centroid[nn_id][1][int(h/6)+1] += weight
@@ -129,8 +132,18 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
             self.OUTPUT_CELL_COUNTS,
             self.tr(self.OUTPUT_CELL_COUNTS),
             QgsProcessing.TypeVectorPoint))
+        self.addParameter(QgsProcessingParameterNumber(
+            self.TIMEZONE,
+            self.tr(self.TIMEZONE),
+            QgsProcessingParameterNumber.Integer,
+            QVariant(8),
+            False,
+            -12,
+            12
+        ))
 
     def processAlgorithm(self, parameters, context, feedback):
+        timezone = self.parameterAsInt(parameters, self.TIMEZONE, context)
         centroid_layer = self.parameterAsSource(parameters, self.INPUT_CELL_CENTERS, context)
         trajectory_layer = self.parameterAsSource(parameters, self.INPUT_TRAJECTORIES, context)
         weight_field = self.parameterAsString(parameters, self.WEIGHT_FIELD, context)
@@ -150,7 +163,7 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
         (pointSink, point_dest_id) = self.parameterAsSink(parameters, self.OUTPUT_CELL_COUNTS, context, point_fields,
                                                           centroid_layer.wkbType(), centroid_layer.sourceCrs())
         
-        sg = self.SequenceGenerator(centroid_layer, trajectory_layer, feedback,
+        sg = self.SequenceGenerator(centroid_layer, trajectory_layer, feedback, timezone,
                                     weight_field if use_weight_field else None)
 
         for f in sg.create_flow_lines():
