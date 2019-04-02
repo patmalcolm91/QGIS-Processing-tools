@@ -38,6 +38,15 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
     def shortHelpString(self):
         return self.tr("""
         Computes flows between cells from trajectories.
+        Parameters:
+        &bull; Input Trajectories: the LineM or Line layer containing the trajectories to be aggregated.
+        Note: if using OD Lines as input, be sure to first densify the lines at an appropriate interval.
+        &bull; Weight Field: Field in the trajectory layer which contains the weight of each trajectory. Default False.
+        &bull; Use Weight Field: whether or not to use the specified weight field. If False, a weight of 1 is used.
+        &bull; Input Cell Centers: the points to which the trajectories should be snapped before calculating.
+        &bull; Timezone: offset of the data from UTC (for splitting counts in to 6 hour windows). Default local offset.
+        &bull; Output Flowlines: line layer containing the total flows between each connected node.
+        &bull; Output Cell Counts: point layer containing the total flow through each point, also divided in 6h windows.
         """)
  
     def helpUrl(self):
