@@ -128,7 +128,9 @@ class ComputeFlowsBetweenCellsFromTrajectories(QgsProcessingAlgorithm):
             self.tr(self.WEIGHT_FIELD),
             'Weight',
             self.INPUT_TRAJECTORIES,
-            QgsProcessingParameterField.Numeric))
+            QgsProcessingParameterField.Numeric,
+            False,
+            True))
         self.addParameter(QgsProcessingParameterBoolean(
             self.USE_WEIGHT_FIELD,
             self.tr(self.USE_WEIGHT_FIELD),
